@@ -75,7 +75,10 @@ export default class GoogleOAuthService extends Service {
             },
         });
         ctx.i18n.load('zh', {
-            'Login With Google': '使用 Google 登录',
+            'Login with Google': '使用 Google 登录',
+        });
+        ctx.i18n.load('zh_TW', {
+            'Login with Google': '使用 Google 登入',
         });
     }
 }

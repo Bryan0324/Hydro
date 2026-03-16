@@ -2,6 +2,8 @@
 
 This guide explains how to create addons (plugins) for the [Hydro](https://github.com/hydro-dev/Hydro) online judge platform.
 
+> **繁體中文版：** [zh_TW/README.md](./zh_TW/README.md)
+
 ## Table of Contents
 
 1. [Introduction](#introduction)

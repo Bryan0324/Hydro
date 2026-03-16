@@ -72,7 +72,10 @@ export default class LoginWithGithubService extends Service {
             },
         });
         ctx.i18n.load('zh', {
-            'Login With GitHub': '使用 GitHub 登录',
+            'Login with GitHub': '使用 GitHub 登录',
+        });
+        ctx.i18n.load('zh_TW', {
+            'Login with GitHub': '使用 GitHub 登入',
         });
     }
 }
