@@ -141,8 +141,8 @@ export default definePlugin({
 ### The `Context` object
 
 The `ctx` parameter is the plugin's dependency-injection container (a Cordis `Context`).  
-All effects registered through it (routes, event listeners, UI injections) are automatically
-cleaned up when the plugin is unloaded or reloaded.
+All effects registered through it (routes, event listeners, UI injections, timers, settings) are
+automatically cleaned up when the plugin is unloaded or hot-reloaded.
 
 Key `Context` methods:
 
@@ -150,14 +150,42 @@ Key `Context` methods:
 |--------|-------------|
 | `ctx.Route(name, path, Handler, ...perms)` | Register an HTTP route |
 | `ctx.Connection(name, path, Handler, ...perms)` | Register a WebSocket connection route |
-| `ctx.on(event, handler)` | Subscribe to a system event |
-| `ctx.emit(event, ...args)` | Emit an event |
+| `ctx.on(event, handler)` | Subscribe to an event (removed on plugin unload) |
+| `ctx.once(event, handler)` | Subscribe once; removed after first call |
+| `ctx.emit(event, ...args)` | Emit an event locally (synchronous, no await) |
+| `ctx.parallel(event, ...args)` | Emit and await all async listeners concurrently |
+| `ctx.serial(event, ...args)` | Emit and await listeners in order; returns first non-`undefined` value |
+| `ctx.broadcast(event, ...args)` | Broadcast across PM2 cluster processes |
 | `ctx.injectUI(target, name, args?, ...perms)` | Inject a UI node |
-| `ctx.i18n.load(lang, translations)` | Add translations |
+| `ctx.i18n.load(lang, translations)` | Add translations (removed on plugin unload) |
+| `ctx.i18n.get(key, lang)` | Look up a single translation key |
+| `ctx.i18n.translate(str, languages)` | Resolve a string against a language priority list |
 | `ctx.addScript(name, desc, schema, run)` | Register a maintenance script |
 | `ctx.provideModule(type, id, module)` | Register a module (e.g. hash provider) |
-| `ctx.plugin(plugin, config?)` | Load a sub-plugin |
-| `ctx.inject(deps, fn)` | Wait for services and run `fn` |
+| `ctx.setImmediate(fn, ...args)` | Deferred callback; cancelled on plugin unload |
+| `ctx.plugin(plugin, config?)` | Load a sub-plugin; returns a `Fiber` |
+| `ctx.inject(deps, fn)` | Wait for services and run `fn` in a child scope |
+| `ctx.effect(() => cleanup)` | Register a side-effect with a teardown function |
+| `ctx.extend(patch)` | Return a child context with extra properties |
+| `ctx.get(serviceName)` | Look up a service by name (or `undefined` if not ready) |
+| `ctx.handlerMixin(mixin)` | Mix methods into every HTTP Handler |
+| `ctx.wsHandlerMixin(mixin)` | Mix methods into every WebSocket ConnectionHandler |
+| `ctx.withHandlerClass(name, cb)` | Modify a specific handler class by its route name |
+| `ctx.addCaptureRoute(prefix, cb)` | Intercept all requests under a URL prefix with Koa middleware |
+
+Service properties available on `ctx`:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `ctx.db` | `MongoService` | MongoDB client with `collection()`, `paginate()`, `ensureIndexes()` |
+| `ctx.setting` | `SettingService` | Plugin settings: `get()`, `requestConfig()`, `SystemSetting()`, `DomainSetting()`, etc. |
+| `ctx.i18n` | `I18nService` | Translations: `load()`, `get()`, `translate()`, `langs()` |
+| `ctx.loader` | `Loader` | Addon loader |
+| `ctx.check` | `CheckService` | Health check service |
+| `ctx.geoip?` | `GeoIP` | GeoIP lookup (if geoip plugin is loaded) |
+| `ctx.domain?` | `DomainDoc` | Current domain (set on per-request child contexts) |
+
+For full details on each method and property, see [api-reference.md → Context & Service](./api-reference.md#context--service).
 
 ### Lifecycle events
 

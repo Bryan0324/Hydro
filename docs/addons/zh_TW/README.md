@@ -141,22 +141,50 @@ export default definePlugin({
 ### `Context` 物件
 
 `ctx` 參數是插件的依賴注入容器（Cordis `Context`）。  
-透過它註冊的所有效果（路由、事件監聽器、UI 注入）都會在插件卸載或重載時自動清除。
+透過它註冊的所有效果（路由、事件監聽器、UI 注入、計時器、設定）都會在插件卸載或重載時**自動清除**。
 
 `Context` 的主要方法：
 
 | 方法 | 說明 |
 |------|------|
 | `ctx.Route(name, path, Handler, ...perms)` | 註冊 HTTP 路由 |
-| `ctx.Connection(name, path, Handler, ...perms)` | 註冊 WebSocket 路由 |
-| `ctx.on(event, handler)` | 訂閱系統事件 |
-| `ctx.emit(event, ...args)` | 觸發事件 |
+| `ctx.Connection(name, path, Handler, ...perms)` | 註冊 WebSocket 連線路由 |
+| `ctx.on(event, handler)` | 訂閱事件（插件卸載時自動移除） |
+| `ctx.once(event, handler)` | 單次訂閱；第一次呼叫後自動移除 |
+| `ctx.emit(event, ...args)` | 在當前程序本地觸發事件（同步，不等待） |
+| `ctx.parallel(event, ...args)` | 觸發並並發等待所有非同步監聽器 |
+| `ctx.serial(event, ...args)` | 按順序觸發並等待監聽器；回傳第一個非 `undefined` 值 |
+| `ctx.broadcast(event, ...args)` | 跨 PM2 叢集程序廣播 |
 | `ctx.injectUI(target, name, args?, ...perms)` | 注入 UI 節點 |
-| `ctx.i18n.load(lang, translations)` | 新增翻譯 |
+| `ctx.i18n.load(lang, translations)` | 新增翻譯（插件卸載時移除） |
+| `ctx.i18n.get(key, lang)` | 查詢單一翻譯鍵 |
+| `ctx.i18n.translate(str, languages)` | 按語言優先順序解析字串 |
 | `ctx.addScript(name, desc, schema, run)` | 註冊維護腳本 |
 | `ctx.provideModule(type, id, module)` | 註冊模組（例如雜湊函數） |
-| `ctx.plugin(plugin, config?)` | 載入子插件 |
-| `ctx.inject(deps, fn)` | 等待服務就緒後執行 `fn` |
+| `ctx.setImmediate(fn, ...args)` | 延遲回呼；插件卸載時自動取消 |
+| `ctx.plugin(plugin, config?)` | 載入子插件；回傳 `Fiber` |
+| `ctx.inject(deps, fn)` | 等待服務就緒後在子作用域中執行 `fn` |
+| `ctx.effect(() => cleanup)` | 註冊帶有清理函式的副作用 |
+| `ctx.extend(patch)` | 回傳附帶額外屬性的子 Context |
+| `ctx.get(serviceName)` | 按名稱查詢服務（若尚未就緒則回傳 `undefined`） |
+| `ctx.handlerMixin(mixin)` | 將方法混入每個 HTTP Handler |
+| `ctx.wsHandlerMixin(mixin)` | 將方法混入每個 WebSocket ConnectionHandler |
+| `ctx.withHandlerClass(name, cb)` | 按路由名稱修改特定處理器類別 |
+| `ctx.addCaptureRoute(prefix, cb)` | 以 Koa 中介軟體攔截某 URL 前綴下的所有請求 |
+
+`ctx` 上可用的服務屬性：
+
+| 屬性 | 型別 | 說明 |
+|------|------|------|
+| `ctx.db` | `MongoService` | MongoDB 客戶端，含 `collection()`、`paginate()`、`ensureIndexes()` |
+| `ctx.setting` | `SettingService` | 插件設定：`get()`、`requestConfig()`、`SystemSetting()`、`DomainSetting()` 等 |
+| `ctx.i18n` | `I18nService` | 翻譯服務：`load()`、`get()`、`translate()`、`langs()` |
+| `ctx.loader` | `Loader` | 附加元件載入器 |
+| `ctx.check` | `CheckService` | 健康檢查服務 |
+| `ctx.geoip?` | `GeoIP` | GeoIP 查詢（若已載入 geoip 插件） |
+| `ctx.domain?` | `DomainDoc` | 當前域（在每個請求的子 Context 上設定） |
+
+各方法與屬性的完整說明，請參閱 [api-reference.md → Context 與 Service](./api-reference.md#context-與-service)。
 
 ### 生命週期事件
 

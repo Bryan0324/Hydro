@@ -61,59 +61,320 @@ export default definePlugin({
 ### `Context`
 
 The plugin's dependency-injection container (extends [Cordis](https://github.com/cordiverse/cordis) `Context`).
+Every effect registered through a plugin's `ctx` — routes, event listeners, UI injections, timers,
+settings — is automatically torn down when the plugin is unloaded or hot-reloaded.
 
 ```typescript
 import { Context } from 'hydrooj';
+
+export async function apply(ctx: Context) {
+    // everything registered here is scoped to this plugin's lifetime
+}
 ```
+
+---
 
 #### Routing
 
-| Method | Description |
-|--------|-------------|
-| `ctx.Route(name, path, HandlerClass, ...perms)` | Register an HTTP route |
-| `ctx.Connection(name, path, HandlerClass, ...perms)` | Register a WebSocket route |
+```typescript
+// HTTP route — handlers respond to GET/POST/PUT/DELETE requests
+ctx.Route('my_page', '/my/page/:id', MyPageHandler);
+
+// With a permission/privilege guard — users without it get a 403
+import { PERM, PRIV } from 'hydrooj';
+ctx.Route('admin_page', '/admin', AdminHandler, PRIV.PRIV_EDIT_SYSTEM);
+
+// WebSocket route
+ctx.Connection('my_ws', '/my/ws', MyWsHandler);
+```
+
+| Method | Parameters | Description |
+|--------|-----------|-------------|
+| `ctx.Route(name, path, HandlerClass, ...perms)` | `name` — unique route name; `path` — Koa-router URL pattern; `HandlerClass` — class extending `Handler`; `perms` — optional `PERM`/`PRIV` values | Register an HTTP route. Returns a dispose function. |
+| `ctx.Connection(name, path, HandlerClass, ...perms)` | same as `Route` but `HandlerClass` must extend `ConnectionHandler` | Register a WebSocket route. |
+
+**Route name conventions**
+
+The route `name` is used to build URLs (`this.url('my_page', { id: 42 })`) and to target
+handler mixins. Choose names that are globally unique across all addons.
+
+---
 
 #### Events
 
+```typescript
+// Subscribe — listener is removed when the plugin unloads
+ctx.on('app/ready', async () => {
+    console.log('All plugins loaded!');
+});
+
+// Subscribe once — automatically removed after first call
+ctx.once('database/connect', (db) => {
+    console.log('MongoDB connected:', db.databaseName);
+});
+
+// Fire locally in the current process
+ctx.emit('record/change', rdoc);
+
+// Fire and wait for every async listener to finish (serial waterfall)
+await ctx.serial('handler/before/MyPage', h);
+
+// Fire locally and await all listeners concurrently (parallel fan-out)
+await ctx.parallel('problem/get', pdoc, handler);
+
+// Broadcast across all PM2 cluster processes (falls back to local if not in cluster mode)
+ctx.broadcast('user/delcache', userId.toString());
+```
+
 | Method | Description |
 |--------|-------------|
-| `ctx.on(event, handler)` | Subscribe to an event (removed on plugin unload) |
-| `ctx.once(event, handler)` | Subscribe once |
-| `ctx.emit(event, ...args)` | Emit an event locally |
-| `ctx.parallel(event, ...args)` | Emit and await all async listeners concurrently |
-| `ctx.broadcast(event, ...args)` | Broadcast across all processes (PM2 cluster) |
+| `ctx.on(event, handler)` | Subscribe; listener is removed when the plugin unloads |
+| `ctx.once(event, handler)` | Subscribe once; removed after first invocation |
+| `ctx.emit(event, ...args)` | Fire synchronously in the current process; does **not** await |
+| `ctx.parallel(event, ...args)` | Fire and `await Promise.all(listeners)` — concurrent fan-out |
+| `ctx.serial(event, ...args)` | Fire and await each listener in registration order — **returns the first non-`undefined` return value** |
+| `ctx.broadcast(event, ...args)` | Cross-process broadcast via PM2 bus; degrades to `ctx.parallel` if not in cluster mode |
+
+> **`serial` vs `parallel`:** Use `ctx.serial` when you need listeners to be able to intercept
+> or short-circuit processing (e.g. `handler/before/*` middleware hooks). Use `ctx.parallel`
+> when all listeners are independent side-effects.
+
+---
 
 #### UI & Locale
 
+```typescript
+// Register a UI node — removed on plugin unload
+ctx.injectUI('NavMenu', 'blog_main', { icon: 'book', displayName: 'Blog', uid: '${handler.user._id}' },
+    PRIV.PRIV_USER_PROFILE);
+
+// Load translations — removed on plugin unload
+ctx.i18n.load('zh_TW', {
+    Blog: '部落格',
+    'blog_main': '部落格',
+});
+ctx.i18n.load('zh', {
+    Blog: '博客',
+});
+ctx.i18n.load('en', {
+    Blog: 'Blog',
+});
+```
+
 | Method | Description |
 |--------|-------------|
-| `ctx.injectUI(target, name, args?, ...guards)` | Inject a UI node (see [ui.md](./ui.md)) |
-| `ctx.i18n.load(lang, translations)` | Add translations (removed on plugin unload) |
+| `ctx.injectUI(target, name, args?, ...guards)` | Inject a UI node; see [ui.md](./ui.md) for targets and args |
+| `ctx.i18n.load(lang, translations)` | Prepend translation entries for `lang`; removed on plugin unload |
+| `ctx.i18n.get(key, lang)` | Look up a single translation key; returns `null` if not found |
+| `ctx.i18n.translate(str, languages)` | Resolve `str` against a priority list of language codes |
+| `ctx.i18n.langs(interfaceOnly?)` | Return `{ langCode: langName }` map of all registered languages |
 
-#### Lifecycle & DI
+---
+
+#### Lifecycle & Dependency Injection
+
+```typescript
+// Wait for one or more services to become available, then call fn.
+// fn runs in a child scope — it's torn down if any required service disappears.
+ctx.inject(['server', 'setting'], (c) => {
+    c.Route('my_route', '/my', MyHandler);
+    // ...
+});
+
+// Manually load a sub-plugin (with optional config)
+ctx.plugin(MyService, { apiKey: '...' });
+
+// Register an arbitrary cleanup effect — fn is called when the plugin unloads.
+ctx.effect(() => {
+    const timer = setInterval(() => doSomething(), 60_000);
+    return () => clearInterval(timer);    // ← cleanup
+});
+
+// Create a child context with extra domain-scoped data.
+// Used internally by the request middleware.
+const childCtx = ctx.extend({ domain: ddoc });
+```
 
 | Method | Description |
 |--------|-------------|
-| `ctx.plugin(plugin, config?)` | Load a sub-plugin |
-| `ctx.inject(deps, fn)` | Wait for services, then call `fn` |
-| `ctx.effect(() => cleanup)` | Register a cleanup function |
+| `ctx.plugin(plugin, config?)` | Load a sub-plugin; returns a `Fiber` representing its lifecycle |
+| `ctx.inject(deps, fn)` | Wait for all `deps` services to be ready, then call `fn(childCtx)` |
+| `ctx.effect(() => cleanup)` | Register a side-effect with a teardown function |
+| `ctx.extend(patch)` | Return a shallow-cloned child `Context` with extra properties merged in |
+| `ctx.get(serviceName)` | Look up a service by name; returns `undefined` if not yet available |
 
-#### Hydro-specific
+---
+
+#### Hydro-specific Methods
+
+```typescript
+// Register a script callable from Admin → Maintenance
+ctx.addScript(
+    'my-addon/fixData',
+    'Fix legacy data',
+    Schema.object({ dryRun: Schema.boolean().default(true) }),
+    async ({ dryRun }, report) => {
+        // ...
+        report({ message: 'Done.' });
+        return true;
+    },
+);
+
+// Register a pluggable module (e.g. a password-hash provider)
+ctx.provideModule('hash', 'argon2', {
+    hash: (password, salt) => argon2.hash(password + salt),
+    check: (password, salt, digest) => argon2.verify(digest, password + salt),
+});
+
+// Schedule a deferred callback that is automatically cancelled on plugin unload
+ctx.setImmediate(() => warmupCache());
+```
 
 | Method | Description |
 |--------|-------------|
-| `ctx.addScript(name, desc, schema, run)` | Register a maintenance script (see below) |
-| `ctx.provideModule(type, id, module)` | Register a module (e.g. `hash`, `problemSearch`) |
-| `ctx.setImmediate(fn, ...args)` | Schedule a deferred callback (removed on plugin unload) |
+| `ctx.addScript(name, desc, schema, run)` | Register a maintenance script; see [Maintenance Scripts](#maintenance-scripts) |
+| `ctx.provideModule(type, id, module)` | Register a module implementation; `type` is a key of `ModuleInterfaces` |
+| `ctx.setImmediate(fn, ...args)` | Deferred callback; cancelled if the plugin is unloaded before it fires |
 
-#### Properties
+---
+
+#### Handler Mixins (advanced)
+
+These methods let you inject behavior into **every** handler of a given class or name,
+without subclassing.
+
+```typescript
+// Add a method / property to every HTTP handler
+ctx.handlerMixin({
+    myHelper() {
+        return this.request.headers['x-my-header'];
+    },
+});
+
+// Add a method / property to every WebSocket handler
+ctx.wsHandlerMixin({
+    onMyEvent(data) { this.send({ type: 'ack' }); },
+});
+
+// Extend a handler class by its route name
+ctx.withHandlerClass('my_route', (HandlerClass) => {
+    HandlerClass.prototype.extraMethod = function () { /* ... */ };
+});
+
+// Capture all requests under a URL prefix with a raw Koa middleware
+ctx.addCaptureRoute('/static/', async (c, next) => {
+    c.body = await serveStatic(c.path);
+});
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `ctx.handlerMixin(mixin)` | `mixin: Partial<Handler> \| (h) => Partial<Handler>` | Mix properties/methods into every HTTP `Handler` |
+| `ctx.wsHandlerMixin(mixin)` | `mixin: Partial<ConnectionHandler> \| (h) => Partial<ConnectionHandler>` | Mix into every WebSocket `ConnectionHandler` |
+| `ctx.withHandlerClass(name, cb)` | `name`: route name; `cb(HandlerClass)` | Modify a specific handler class by its registered route name |
+| `ctx.addCaptureRoute(prefix, cb)` | `prefix`: URL prefix; `cb(ctx, next)`: Koa middleware | Intercept all requests that start with `prefix` |
+
+---
+
+#### Service Properties
+
+##### `ctx.db` — Database Service
+
+Direct access to MongoDB via the [MongoService](../packages/hydrooj/src/service/db.ts).
+
+```typescript
+// Get a typed collection handle
+const coll = ctx.db.collection('my-addon.items');
+await coll.insertOne({ _id: 'foo', value: 42 });
+
+// Paginate a cursor — returns [docs, numPages, totalCount]
+const [docs, numPages, total] = await ctx.db.paginate(
+    coll.find({ active: true }).sort({ _id: -1 }),
+    page,       // 1-based page number
+    20,         // page size
+);
+
+// Ensure indexes (idempotent)
+await ctx.db.ensureIndexes(coll,
+    { key: { owner: 1 }, name: 'owner' },
+    { key: { createdAt: -1 }, name: 'createdAt' },
+);
+```
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `collection(name)` | `name: keyof Collections` | Get a `Collection<T>` handle |
+| `paginate(cursor, page, pageSize)` | `cursor: FindCursor<T>`, `page: number`, `pageSize: number` | Return `[docs, numPages, totalCount]` |
+| `ensureIndexes(coll, ...indexes)` | `indexes: IndexDescription[]` | Create missing indexes; drop removed ones |
+| `ranked(cursor, equ)` | `cursor: FindCursor<T> \| T[]`, `equ: (a,b)=>boolean` | Return `[rank, doc][]` with tied ranks |
+
+##### `ctx.setting` — Setting Service
+
+Register plugin settings that appear in the Hydro configuration UI and are persisted to the
+database.
+
+```typescript
+import { Schema } from 'hydrooj';
+
+// System-wide setting (Admin → System Settings)
+ctx.setting.SystemSetting(Schema.object({
+    'my-addon.apiKey': Schema.string().default('').description('External API key'),
+    'my-addon.timeout': Schema.number().default(5000).description('Request timeout (ms)'),
+}));
+
+// Per-domain setting (Domain → Settings)
+ctx.setting.DomainSetting(Schema.object({
+    'my-addon.enabled': Schema.boolean().default(false).description('Enable My Addon'),
+}));
+
+// User preference (User → Preferences)
+ctx.setting.PreferenceSetting(Schema.object({
+    'my-addon.theme': Schema.union(['light', 'dark'] as const).default('light'),
+}));
+
+// Read a system setting value
+const apiKey = ctx.setting.get('my-addon.apiKey');   // string | undefined
+
+// Get a reactive config proxy — updates automatically when settings change
+const config = ctx.setting.requestConfig(Schema.object({
+    'my-addon.apiKey': Schema.string().default(''),
+    'my-addon.timeout': Schema.number().default(5000),
+}));
+// config['my-addon.apiKey'] always reflects the current value
+```
+
+| Method | Description |
+|--------|-------------|
+| `setting.SystemSetting(...schemas)` | Register system-wide settings; removed on plugin unload |
+| `setting.DomainSetting(...schemas)` | Register per-domain settings |
+| `setting.PreferenceSetting(...schemas)` | Register per-user preferences |
+| `setting.AccountSetting(...schemas)` | Register account-level settings |
+| `setting.DomainUserSetting(...schemas)` | Register per-user-per-domain settings |
+| `setting.get(key)` | Read the current value of a system setting |
+| `setting.requestConfig(schema, dynamic?)` | Get a reactive proxy that always reflects the live config |
+
+##### `ctx.i18n` — Internationalisation Service
+
+See [UI & Locale](#ui--locale) above for `load()` usage.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `i18n.load(lang, map)` | `lang: string`, `map: Record<string,string>` | Prepend translation entries; removed on plugin unload |
+| `i18n.get(key, lang)` | `key: string`, `lang: string` → `string \| null` | Look up a single key in a specific language; returns `null` if not found |
+| `i18n.translate(str, languages)` | `str: string`, `languages: string[]` → `string` | Resolve `str` against an ordered list of language codes; falls back to `str` |
+| `i18n.langs(interfaceOnly?)` | `interfaceOnly?: boolean` → `Record<string,string>` | Map of all registered language codes to their display names |
+
+##### Other Properties
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `ctx.db` | `Database` | Database with `.paginate()` helper |
-| `ctx.loader` | `Loader` | Addon loader |
-| `ctx.check` | `CheckService` | Health check service |
-| `ctx.geoip?` | `GeoIP` | GeoIP lookup (if geoip plugin is loaded) |
+| `ctx.db` | `MongoService` | MongoDB client; see above |
+| `ctx.setting` | `SettingService` | Plugin settings; see above |
+| `ctx.i18n` | `I18nService` | Translations; see above |
+| `ctx.loader` | `Loader` | Addon loader; provides `ctx.loader.reloadPlugin()` |
+| `ctx.check` | `CheckService` | Health check service; register checks with `ctx.check.register()` |
+| `ctx.geoip?` | `GeoIP` | GeoIP lookup (available only if a geoip plugin is loaded) |
+| `ctx.domain?` | `DomainDoc` | Set on child contexts created per-request; contains the active domain document |
 
 ### `Service`
 

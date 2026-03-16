@@ -63,60 +63,316 @@ export default definePlugin({
 
 ### `Context`
 
-插件的依賴注入容器（繼承自 [Cordis](https://github.com/cordiverse/cordis) `Context`）。
+插件的依賴注入容器（繼承自 [Cordis](https://github.com/cordiverse/cordis) `Context`）。  
+透過插件 `ctx` 註冊的所有效果——路由、事件監聽器、UI 注入、計時器、設定——
+都會在插件卸載或熱重載時**自動清除**。
 
 ```typescript
 import { Context } from 'hydrooj';
+
+export async function apply(ctx: Context) {
+    // 在此處註冊的所有效果都限定在此插件的生命週期內
+}
 ```
+
+---
 
 #### 路由
 
-| 方法 | 說明 |
-|------|------|
-| `ctx.Route(name, path, HandlerClass, ...perms)` | 註冊 HTTP 路由 |
-| `ctx.Connection(name, path, HandlerClass, ...perms)` | 註冊 WebSocket 路由 |
+```typescript
+// HTTP 路由 — 處理器回應 GET/POST/PUT/DELETE 請求
+ctx.Route('my_page', '/my/page/:id', MyPageHandler);
+
+// 附帶權限/特權守衛 — 沒有對應權限的使用者會收到 403
+import { PERM, PRIV } from 'hydrooj';
+ctx.Route('admin_page', '/admin', AdminHandler, PRIV.PRIV_EDIT_SYSTEM);
+
+// WebSocket 路由
+ctx.Connection('my_ws', '/my/ws', MyWsHandler);
+```
+
+| 方法 | 參數 | 說明 |
+|------|------|------|
+| `ctx.Route(name, path, HandlerClass, ...perms)` | `name` — 唯一路由名稱；`path` — Koa-router URL 模式；`HandlerClass` — 繼承自 `Handler` 的類別；`perms` — 可選的 `PERM`/`PRIV` 值 | 註冊 HTTP 路由，回傳清除函式 |
+| `ctx.Connection(name, path, HandlerClass, ...perms)` | 同 `Route`，但 `HandlerClass` 必須繼承自 `ConnectionHandler` | 註冊 WebSocket 路由 |
+
+**路由名稱命名規範**
+
+路由 `name` 用於建構 URL（`this.url('my_page', { id: 42 })`）以及指定 handler mixin 的目標。
+請選擇在所有附加元件中全域唯一的名稱。
+
+---
 
 #### 事件
 
+```typescript
+// 訂閱 — 插件卸載時監聽器自動移除
+ctx.on('app/ready', async () => {
+    console.log('所有插件已載入！');
+});
+
+// 單次訂閱 — 第一次呼叫後自動移除
+ctx.once('database/connect', (db) => {
+    console.log('MongoDB 已連線：', db.databaseName);
+});
+
+// 在當前程序本地觸發事件
+ctx.emit('record/change', rdoc);
+
+// 觸發並等待每個非同步監聽器完成（串行瀑布）
+await ctx.serial('handler/before/MyPage', h);
+
+// 在本地觸發並並發等待所有監聽器（平行扇出）
+await ctx.parallel('problem/get', pdoc, handler);
+
+// 向所有 PM2 叢集程序廣播（非叢集模式下退化為本地）
+ctx.broadcast('user/delcache', userId.toString());
+```
+
 | 方法 | 說明 |
 |------|------|
-| `ctx.on(event, handler)` | 訂閱事件（插件卸載時自動移除） |
-| `ctx.once(event, handler)` | 單次訂閱 |
-| `ctx.emit(event, ...args)` | 在本地觸發事件 |
-| `ctx.parallel(event, ...args)` | 觸發並發等待所有非同步監聽器 |
-| `ctx.broadcast(event, ...args)` | 跨所有程序廣播（PM2 叢集） |
+| `ctx.on(event, handler)` | 訂閱；插件卸載時自動移除監聽器 |
+| `ctx.once(event, handler)` | 單次訂閱；第一次呼叫後自動移除 |
+| `ctx.emit(event, ...args)` | 在當前程序中同步觸發；**不**等待非同步監聽器 |
+| `ctx.parallel(event, ...args)` | 觸發並 `await Promise.all(監聽器)` — 並發扇出 |
+| `ctx.serial(event, ...args)` | 按註冊順序逐一觸發並等待每個監聽器 — **回傳第一個非 `undefined` 的回傳值** |
+| `ctx.broadcast(event, ...args)` | 透過 PM2 bus 進行跨程序廣播；非叢集模式下退化為 `ctx.parallel` |
+
+> **`serial` 與 `parallel` 的差異：** 當需要監聽器能夠攔截或中斷處理流程時（例如 `handler/before/*` 中介軟體 hook），使用 `ctx.serial`。當所有監聽器都是獨立的副作用時，使用 `ctx.parallel`。
+
+---
 
 #### UI 與語言
 
+```typescript
+// 註冊 UI 節點 — 插件卸載時移除
+ctx.injectUI('NavMenu', 'blog_main', { icon: 'book', displayName: 'Blog', uid: '${handler.user._id}' },
+    PRIV.PRIV_USER_PROFILE);
+
+// 載入翻譯 — 插件卸載時移除
+ctx.i18n.load('zh_TW', {
+    Blog: '部落格',
+    blog_main: '部落格',
+});
+ctx.i18n.load('zh', {
+    Blog: '博客',
+});
+ctx.i18n.load('en', {
+    Blog: 'Blog',
+});
+```
+
 | 方法 | 說明 |
 |------|------|
-| `ctx.injectUI(target, name, args?, ...guards)` | 注入 UI 節點（見 [ui.md](./ui.md)） |
-| `ctx.i18n.load(lang, translations)` | 新增翻譯（插件卸載時移除） |
+| `ctx.injectUI(target, name, args?, ...guards)` | 注入 UI 節點；目標與參數說明見 [ui.md](./ui.md) |
+| `ctx.i18n.load(lang, translations)` | 為 `lang` 新增翻譯條目（插件卸載時移除） |
+| `ctx.i18n.get(key, lang)` | 查詢單一翻譯鍵；找不到時回傳 `null` |
+| `ctx.i18n.translate(str, languages)` | 按語言優先順序解析 `str` |
+| `ctx.i18n.langs(interfaceOnly?)` | 回傳所有已註冊語言的 `{ 語言碼: 語言名稱 }` 映射 |
+
+---
 
 #### 生命週期與依賴注入
 
+```typescript
+// 等待一個或多個服務就緒後呼叫 fn。
+// fn 在子作用域中執行 — 若任何依賴服務消失，它會被自動撤銷。
+ctx.inject(['server', 'setting'], (c) => {
+    c.Route('my_route', '/my', MyHandler);
+    // ...
+});
+
+// 手動載入子插件（可附帶設定）
+ctx.plugin(MyService, { apiKey: '...' });
+
+// 註冊任意清理效果 — 插件卸載時呼叫 fn
+ctx.effect(() => {
+    const timer = setInterval(() => doSomething(), 60_000);
+    return () => clearInterval(timer);    // ← 清理函式
+});
+
+// 建立附帶額外域作用域資料的子 Context（框架內部使用）
+const childCtx = ctx.extend({ domain: ddoc });
+```
+
 | 方法 | 說明 |
 |------|------|
-| `ctx.plugin(plugin, config?)` | 載入子插件 |
-| `ctx.inject(deps, fn)` | 等待服務就緒後呼叫 `fn` |
-| `ctx.effect(() => cleanup)` | 註冊清理函式 |
+| `ctx.plugin(plugin, config?)` | 載入子插件；回傳代表其生命週期的 `Fiber` |
+| `ctx.inject(deps, fn)` | 等待所有 `deps` 服務就緒後呼叫 `fn(childCtx)` |
+| `ctx.effect(() => cleanup)` | 註冊帶有清理函式的副作用 |
+| `ctx.extend(patch)` | 回傳淺複製的子 `Context`，並合併額外屬性 |
+| `ctx.get(serviceName)` | 按名稱查詢服務；若尚未可用則回傳 `undefined` |
+
+---
 
 #### Hydro 特有方法
 
+```typescript
+// 從「管理員 → 維護」介面呼叫的腳本
+ctx.addScript(
+    'my-addon/fixData',
+    '修復舊資料',
+    Schema.object({ dryRun: Schema.boolean().default(true) }),
+    async ({ dryRun }, report) => {
+        // ...
+        report({ message: '完成。' });
+        return true;
+    },
+);
+
+// 註冊可插拔模組（例如密碼雜湊提供者）
+ctx.provideModule('hash', 'argon2', {
+    hash: (password, salt) => argon2.hash(password + salt),
+    check: (password, salt, digest) => argon2.verify(digest, password + salt),
+});
+
+// 排程延遲回呼，插件卸載後自動取消
+ctx.setImmediate(() => warmupCache());
+```
+
 | 方法 | 說明 |
 |------|------|
-| `ctx.addScript(name, desc, schema, run)` | 註冊維護腳本（見下文） |
-| `ctx.provideModule(type, id, module)` | 註冊模組（如 `hash`、`problemSearch`） |
-| `ctx.setImmediate(fn, ...args)` | 排程延遲回呼（插件卸載時移除） |
+| `ctx.addScript(name, desc, schema, run)` | 註冊維護腳本；詳見[維護腳本](#維護腳本) |
+| `ctx.provideModule(type, id, module)` | 註冊模組實作；`type` 是 `ModuleInterfaces` 的鍵 |
+| `ctx.setImmediate(fn, ...args)` | 延遲回呼；若插件在觸發前卸載則自動取消 |
 
-#### 屬性
+---
+
+#### Handler Mixin（進階）
+
+這些方法讓你無需繼承子類別，即可為**每個**指定類型的處理器注入行為。
+
+```typescript
+// 為每個 HTTP handler 新增方法/屬性
+ctx.handlerMixin({
+    myHelper() {
+        return this.request.headers['x-my-header'];
+    },
+});
+
+// 為每個 WebSocket handler 新增方法/屬性
+ctx.wsHandlerMixin({
+    onMyEvent(data) { this.send({ type: 'ack' }); },
+});
+
+// 按路由名稱擴充特定的處理器類別
+ctx.withHandlerClass('my_route', (HandlerClass) => {
+    HandlerClass.prototype.extraMethod = function () { /* ... */ };
+});
+
+// 以原始 Koa 中介軟體攔截某 URL 前綴下的所有請求
+ctx.addCaptureRoute('/static/', async (c, next) => {
+    c.body = await serveStatic(c.path);
+});
+```
+
+| 方法 | 簽名 | 說明 |
+|------|------|------|
+| `ctx.handlerMixin(mixin)` | `mixin: Partial<Handler> \| (h) => Partial<Handler>` | 將屬性/方法混入每個 HTTP `Handler` |
+| `ctx.wsHandlerMixin(mixin)` | `mixin: Partial<ConnectionHandler> \| (h) => Partial<ConnectionHandler>` | 混入每個 WebSocket `ConnectionHandler` |
+| `ctx.withHandlerClass(name, cb)` | `name`：路由名稱；`cb(HandlerClass)` | 按已註冊的路由名稱修改特定處理器類別 |
+| `ctx.addCaptureRoute(prefix, cb)` | `prefix`：URL 前綴；`cb(ctx, next)`：Koa 中介軟體 | 攔截所有以 `prefix` 開頭的請求 |
+
+---
+
+#### 服務屬性
+
+##### `ctx.db` — 資料庫服務
+
+透過 [MongoService](../../../../packages/hydrooj/src/service/db.ts) 直接存取 MongoDB。
+
+```typescript
+// 取得具型別的集合句柄
+const coll = ctx.db.collection('my-addon.items');
+await coll.insertOne({ _id: 'foo', value: 42 });
+
+// 分頁遊標 — 回傳 [docs, numPages, totalCount]
+const [docs, numPages, total] = await ctx.db.paginate(
+    coll.find({ active: true }).sort({ _id: -1 }),
+    page,       // 從 1 開始的頁碼
+    20,         // 每頁筆數
+);
+
+// 確保索引存在（冪等操作）
+await ctx.db.ensureIndexes(coll,
+    { key: { owner: 1 }, name: 'owner' },
+    { key: { createdAt: -1 }, name: 'createdAt' },
+);
+```
+
+| 方法 | 簽名 | 說明 |
+|------|------|------|
+| `collection(name)` | `name: keyof Collections` | 取得 `Collection<T>` 句柄 |
+| `paginate(cursor, page, pageSize)` | `cursor: FindCursor<T>`, `page: number`, `pageSize: number` | 回傳 `[docs, numPages, totalCount]` |
+| `ensureIndexes(coll, ...indexes)` | `indexes: IndexDescription[]` | 建立缺少的索引；刪除已移除的索引 |
+| `ranked(cursor, equ)` | `cursor: FindCursor<T> \| T[]`, `equ: (a,b)=>boolean` | 回傳帶同名次的 `[rank, doc][]` |
+
+##### `ctx.setting` — 設定服務
+
+註冊出現在 Hydro 設定 UI 中並持久化到資料庫的插件設定。
+
+```typescript
+import { Schema } from 'hydrooj';
+
+// 全域系統設定（管理員 → 系統設定）
+ctx.setting.SystemSetting(Schema.object({
+    'my-addon.apiKey': Schema.string().default('').description('外部 API 金鑰'),
+    'my-addon.timeout': Schema.number().default(5000).description('請求逾時（毫秒）'),
+}));
+
+// 每個域的設定（域 → 設定）
+ctx.setting.DomainSetting(Schema.object({
+    'my-addon.enabled': Schema.boolean().default(false).description('啟用 My Addon'),
+}));
+
+// 用戶偏好設定（用戶 → 偏好設定）
+ctx.setting.PreferenceSetting(Schema.object({
+    'my-addon.theme': Schema.union(['light', 'dark'] as const).default('light'),
+}));
+
+// 讀取系統設定值
+const apiKey = ctx.setting.get('my-addon.apiKey');   // string | undefined
+
+// 取得響應式設定代理 — 設定變更時自動更新
+const config = ctx.setting.requestConfig(Schema.object({
+    'my-addon.apiKey': Schema.string().default(''),
+    'my-addon.timeout': Schema.number().default(5000),
+}));
+// config['my-addon.apiKey'] 永遠反映當前值
+```
+
+| 方法 | 說明 |
+|------|------|
+| `setting.SystemSetting(...schemas)` | 註冊全域系統設定；插件卸載時移除 |
+| `setting.DomainSetting(...schemas)` | 註冊每個域的設定 |
+| `setting.PreferenceSetting(...schemas)` | 註冊每個用戶的偏好設定 |
+| `setting.AccountSetting(...schemas)` | 註冊帳號層級設定 |
+| `setting.DomainUserSetting(...schemas)` | 註冊每個用戶每個域的設定 |
+| `setting.get(key)` | 讀取系統設定的當前值 |
+| `setting.requestConfig(schema, dynamic?)` | 取得永遠反映最新設定的響應式代理 |
+
+##### `ctx.i18n` — 國際化服務
+
+`load()` 用法詳見上方的 [UI 與語言](#ui-與語言)。
+
+| 方法 | 簽名 | 說明 |
+|------|------|------|
+| `i18n.load(lang, map)` | `lang: string`, `map: Record<string,string>` | 新增翻譯條目（插件卸載時移除） |
+| `i18n.get(key, lang)` | `key: string`, `lang: string` → `string \| null` | 查詢特定語言中的單一鍵；找不到時回傳 `null` |
+| `i18n.translate(str, languages)` | `str: string`, `languages: string[]` → `string` | 按語言優先順序解析 `str`；全部找不到時回退到原始字串 |
+| `i18n.langs(interfaceOnly?)` | `interfaceOnly?: boolean` → `Record<string,string>` | 所有已註冊語言碼到其顯示名稱的映射 |
+
+##### 其他屬性
 
 | 屬性 | 型別 | 說明 |
 |------|------|------|
-| `ctx.db` | `Database` | 含 `.paginate()` 輔助方法的資料庫 |
-| `ctx.loader` | `Loader` | 附加元件載入器 |
-| `ctx.check` | `CheckService` | 健康檢查服務 |
-| `ctx.geoip?` | `GeoIP` | GeoIP 查詢（若已載入 geoip 插件） |
+| `ctx.db` | `MongoService` | MongoDB 客戶端；詳見上方 |
+| `ctx.setting` | `SettingService` | 插件設定；詳見上方 |
+| `ctx.i18n` | `I18nService` | 翻譯服務；詳見上方 |
+| `ctx.loader` | `Loader` | 附加元件載入器；提供 `ctx.loader.reloadPlugin()` |
+| `ctx.check` | `CheckService` | 健康檢查服務；使用 `ctx.check.register()` 註冊檢查項 |
+| `ctx.geoip?` | `GeoIP` | GeoIP 查詢（僅在載入 geoip 插件時可用） |
+| `ctx.domain?` | `DomainDoc` | 在每個請求建立的子 Context 上設定；包含當前域文件 |
 
 ### `Service`
 
