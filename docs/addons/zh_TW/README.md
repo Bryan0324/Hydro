@@ -10,10 +10,11 @@
 2. [快速開始](#快速開始)
 3. [插件結構](#插件結構)
 4. [路由處理器](./handlers.md) — HTTP 與 WebSocket 請求處理
-5. [資料模型](./models.md) — 資料庫模型
-6. [事件系統](./events.md) — 事件系統
-7. [UI 注入](./ui.md) — 注入使用者介面
-8. [API 參考](./api-reference.md) — 完整 API 清單
+5. [資料模型](./models.md) — 資料庫模型（高階）
+6. [資料庫教學](./database.md) — 使用 `ctx.db` 直接存取 MongoDB
+7. [事件系統](./events.md) — 事件系統
+8. [UI 注入](./ui.md) — 注入使用者介面
+9. [API 參考](./api-reference.md) — 完整 API 清單
 
 ---
 

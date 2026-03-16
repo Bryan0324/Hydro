@@ -10,10 +10,11 @@ This guide explains how to create addons (plugins) for the [Hydro](https://githu
 2. [Getting Started](#getting-started)
 3. [Plugin Structure](#plugin-structure)
 4. [Handlers](./handlers.md) — HTTP & WebSocket request handlers
-5. [Models](./models.md) — Database models
-6. [Events](./events.md) — Event system
-7. [UI Injection](./ui.md) — Injecting into the UI
-8. [API Reference](./api-reference.md) — Complete exported API
+5. [Models](./models.md) — Database models (high-level)
+6. [Database Tutorial](./database.md) — Direct MongoDB access with `ctx.db`
+7. [Events](./events.md) — Event system
+8. [UI Injection](./ui.md) — Injecting into the UI
+9. [API Reference](./api-reference.md) — Complete exported API
 
 ---
 

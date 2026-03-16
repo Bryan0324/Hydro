@@ -32,17 +32,24 @@ This document explains how to use the built-in models and how to create your own
 
 ## Direct Database Access
 
-The low-level MongoDB client is available as `db`:
+> **For a full tutorial on direct database access** (CRUD, indexes, pagination, TTL, atomic ops)
+> see [database.md](./database.md).
+
+The low-level MongoDB client is available as `ctx.db` inside your `apply` function:
 
 ```typescript
-import { db } from 'hydrooj';
+import { Context } from 'hydrooj';
 
-const coll = db.collection('my-addon.items');
-await coll.insertOne({ name: 'foo', value: 42 });
-const doc = await coll.findOne({ name: 'foo' });
-await coll.updateOne({ _id: doc._id }, { $set: { value: 99 } });
-await coll.deleteOne({ _id: doc._id });
+export async function apply(ctx: Context) {
+    const coll = ctx.db.collection('my-addon.items');
+    await coll.insertOne({ name: 'foo', value: 42 });
+    const doc = await coll.findOne({ name: 'foo' });
+    await coll.updateOne({ _id: doc._id }, { $set: { value: 99 } });
+    await coll.deleteOne({ _id: doc._id });
+}
 ```
+
+> **Note:** The legacy `import { db } from 'hydrooj'` is deprecated — always use `ctx.db`.
 
 Register the TypeScript type for your collection:
 

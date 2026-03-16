@@ -31,17 +31,23 @@ Hydro 使用 MongoDB 作為資料庫。
 
 ## 直接存取資料庫
 
-低階 MongoDB 客戶端可透過 `db` 存取：
+> **如需完整的直接資料庫存取教學**（CRUD、索引、分頁、TTL、原子操作），請參閱 [database.md](./database.md)。
+
+低階 MongoDB 客戶端可在 `apply` 函式中透過 `ctx.db` 存取：
 
 ```typescript
-import { db } from 'hydrooj';
+import { Context } from 'hydrooj';
 
-const coll = db.collection('my-addon.items');
-await coll.insertOne({ name: 'foo', value: 42 });
-const doc = await coll.findOne({ name: 'foo' });
-await coll.updateOne({ _id: doc._id }, { $set: { value: 99 } });
-await coll.deleteOne({ _id: doc._id });
+export async function apply(ctx: Context) {
+    const coll = ctx.db.collection('my-addon.items');
+    await coll.insertOne({ name: 'foo', value: 42 });
+    const doc = await coll.findOne({ name: 'foo' });
+    await coll.updateOne({ _id: doc._id }, { $set: { value: 99 } });
+    await coll.deleteOne({ _id: doc._id });
+}
 ```
+
+> **注意：** 舊版的 `import { db } from 'hydrooj'` 已被廢棄，請始終使用 `ctx.db`。
 
 為自訂集合宣告 TypeScript 型別：
 
