@@ -13,8 +13,9 @@ This guide explains how to create addons (plugins) for the [Hydro](https://githu
 5. [Models](./models.md) — Database models (high-level)
 6. [Database Tutorial](./database.md) — Direct MongoDB access with `ctx.db`
 7. [Events](./events.md) — Event system
-8. [UI Injection](./ui.md) — Injecting into the UI
-9. [API Reference](./api-reference.md) — Complete exported API
+8. [UI Injection](./ui.md) — Injecting into the UI (server-side)
+9. [ui-default Frontend API](./ui-default-api.md) — Browser JS exports (`Page`, `AutoloadPage`, `Notification`, `Dialog`, `request`, …)
+10. [API Reference](./api-reference.md) — Complete exported API
 
 ---
 

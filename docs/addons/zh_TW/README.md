@@ -13,8 +13,9 @@
 5. [資料模型](./models.md) — 資料庫模型（高階）
 6. [資料庫教學](./database.md) — 使用 `ctx.db` 直接存取 MongoDB
 7. [事件系統](./events.md) — 事件系統
-8. [UI 注入](./ui.md) — 注入使用者介面
-9. [API 參考](./api-reference.md) — 完整 API 清單
+8. [UI 注入](./ui.md) — 注入使用者介面（伺服器端）
+9. [ui-default 前端 API](./ui-default-api.md) — 瀏覽器 JS 匯出（`Page`、`AutoloadPage`、`Notification`、`Dialog`、`request`……）
+10. [API 參考](./api-reference.md) — 完整 API 清單
 
 ---
 
