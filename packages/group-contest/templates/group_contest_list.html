@@ -1,0 +1,82 @@
+{% import "components/nothing.html" as nothing with context %}
+{% import "components/user.html" as user with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Group List') }} - {{ tdoc.title }}</h1>
+      </div>
+      {% if not groups.length %}
+        <div class="section__body">{{ nothing.render(_('No groups yet')) }}</div>
+      {% else %}
+        <div class="section__body no-padding">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>{{ _('Group Name') }}</th>
+                <th>{{ _('Captain') }}</th>
+                <th>{{ _('Members') }}</th>
+                <th>{{ _('Max Size') }}</th>
+                <th>{{ _('Actions') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for g in groups %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td><a href="{{ url('group_contest_detail', tid=tdoc.docId, gid=g._id) }}">{{ g.name }}</a></td>
+                <td>{{ user.render_inline(udict[g.captain], badge=false) }}</td>
+                <td>{{ g.members.length }}</td>
+                <td>{{ g.maxSize or '—' }}</td>
+                <td>
+                  {% if not myGroup %}
+                  <form method="post" action="{{ url('group_contest_detail', tid=tdoc.docId, gid=g._id) }}">
+                    {{ csrf() }}
+                    <input type="hidden" name="_operation" value="join">
+                    <button type="submit" class="primary button tiny">{{ _('Join Group') }}</button>
+                  </form>
+                  {% elif myGroup._id == g._id %}
+                  <span class="primary label">{{ _('Joined') }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Group') }}</h1>
+      </div>
+      <div class="section__body">
+        <a href="{{ url('group_contest_scoreboard', tid=tdoc.docId) }}" class="expanded button">{{ _('Group Scoreboard') }}</a>
+        {% if not myGroup %}
+          <hr />
+          <h3>{{ _('Create Group') }}</h3>
+          <form method="post">
+            {{ csrf() }}
+            <input type="hidden" name="_operation" value="create">
+            <label>{{ _('Group Name') }}
+              <input type="text" name="name" required>
+            </label>
+            <label>{{ _('Max Size') }}
+              <input type="number" name="maxSize" min="1">
+            </label>
+            <button type="submit" class="expanded primary button">{{ _('Create Group') }}</button>
+          </form>
+        {% else %}
+          <p>{{ _('You are in group') }}: <strong>{{ myGroup.name }}</strong></p>
+          <a href="{{ url('group_contest_detail', tid=tdoc.docId, gid=myGroup._id) }}" class="expanded button">{{ _('View my group') }}</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,11 @@
+{
+    "name": "@hydrooj/group-contest",
+    "version": "1.0.0",
+    "description": "Group contest addon for Hydro OJ",
+    "main": "src/index.ts",
+    "repository": "https://github.com/hydro-dev/Hydro",
+    "license": "AGPL-3.0-or-later",
+    "peerDependencies": {
+        "hydrooj": "*"
+    }
+}
