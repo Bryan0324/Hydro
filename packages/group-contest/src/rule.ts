@@ -26,7 +26,6 @@ export function buildGroupRule(ctx: any) {
                 ];
                 for (let i = 1; i <= tdoc.pids.length; i++) {
                     const pid = tdoc.pids[i - 1];
-                    pdict[pid].nAccept = pdict[pid].nSubmit = 0;
                     columns.push({
                         type: 'problem',
                         value: String.fromCharCode(64 + i),
@@ -43,6 +42,7 @@ export function buildGroupRule(ctx: any) {
                 udoc: any,
                 rank: number,
                 tsdoc: any,
+                meta?: any,
             ) {
                 const row: ScoreboardRow = [
                     { type: 'rank', value: rank.toString() },

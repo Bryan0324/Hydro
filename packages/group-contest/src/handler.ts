@@ -1,17 +1,26 @@
 import { ObjectId } from 'mongodb';
 import {
     ContestModel, ContestNotFoundError, Handler, NotFoundError,
-    param, PERM, PRIV, Types, UserModel,
+    param, PERM, PRIV, Tdoc, Types, UserModel,
 } from 'hydrooj';
-import { GroupModel } from './model';
+import { GroupDoc, GroupModel } from './model';
+
+type GroupDetail = { score: number; rid: ObjectId | null };
 
 export class GroupContestBaseHandler extends Handler {
-    tdoc: any;
+    tdoc: Tdoc;
 
     @param('tid', Types.ObjectId)
     async _prepare(domainId: string, tid: ObjectId) {
         this.tdoc = await ContestModel.get(domainId, tid);
         if (!this.tdoc) throw new ContestNotFoundError(domainId, tid);
+    }
+
+    protected checkGroupAdmin(group: GroupDoc) {
+        const isAdmin = this.user.hasPerm(PERM.PERM_EDIT_CONTEST) || this.user.own(this.tdoc);
+        if (group.captain !== this.user._id && !isAdmin) {
+            this.checkPerm(PERM.PERM_EDIT_CONTEST);
+        }
     }
 }
 
@@ -104,9 +113,9 @@ export class GroupContestDetailHandler extends GroupContestBaseHandler {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         const group = await GroupModel.get(this.ctx, domainId, gid);
         if (!group || !group.tid.equals(tid)) throw new NotFoundError('group', gid);
-        const isAdmin = this.user.hasPerm(PERM.PERM_EDIT_CONTEST) || this.user.own(this.tdoc);
-        if (group.captain !== this.user._id && !isAdmin) {
-            this.checkPerm(PERM.PERM_EDIT_CONTEST);
+        this.checkGroupAdmin(group);
+        if (maxSize !== undefined && maxSize < group.members.length) {
+            throw new Error(`Max size ${maxSize} cannot be less than current member count ${group.members.length}`);
         }
         await GroupModel.edit(this.ctx, domainId, gid, { name, ...(maxSize !== undefined ? { maxSize } : {}) });
         this.back();
@@ -118,10 +127,7 @@ export class GroupContestDetailHandler extends GroupContestBaseHandler {
         this.checkPriv(PRIV.PRIV_USER_PROFILE);
         const group = await GroupModel.get(this.ctx, domainId, gid);
         if (!group || !group.tid.equals(tid)) throw new NotFoundError('group', gid);
-        const isAdmin = this.user.hasPerm(PERM.PERM_EDIT_CONTEST) || this.user.own(this.tdoc);
-        if (group.captain !== this.user._id && !isAdmin) {
-            this.checkPerm(PERM.PERM_EDIT_CONTEST);
-        }
+        this.checkGroupAdmin(group);
         await GroupModel.del(this.ctx, domainId, gid);
         this.response.redirect = this.url('group_contest_list', { tid });
     }
@@ -136,13 +142,13 @@ export class GroupContestScoreboardHandler extends GroupContestBaseHandler {
         const tsdocs = await ContestModel.getMultiStatus(domainId, { docId: tid }).toArray();
 
         // Build member->group map
-        const memberToGroup: Record<number, typeof groups[0]> = {};
+        const memberToGroup: Record<number, GroupDoc> = {};
         for (const g of groups) {
             for (const uid of g.members) memberToGroup[uid] = g;
         }
 
         // Aggregate group scores (OI-style: sum best per problem)
-        const groupScores: Record<string, { group: typeof groups[0]; score: number; detail: Record<number, any> }> = {};
+        const groupScores: Record<string, { group: GroupDoc; score: number; detail: Record<number, GroupDetail> }> = {};
         for (const g of groups) {
             groupScores[g._id.toHexString()] = { group: g, score: 0, detail: {} };
         }
