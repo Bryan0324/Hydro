@@ -1,0 +1,70 @@
+{% import "components/user.html" as user with context %}
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-9 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ group.name }}</h1>
+      </div>
+      <div class="section__body">
+        <p>{{ _('Contest') }}: <a href="{{ url('contest_detail', tid=tdoc.docId) }}">{{ tdoc.title }}</a></p>
+        <p>{{ _('Captain') }}: {{ user.render_inline(udict[group.captain], badge=false) }}</p>
+        {% if group.maxSize %}<p>{{ _('Max Size') }}: {{ group.maxSize }}</p>{% endif %}
+        <p>{{ _('Members') }} ({{ group.members.length }}):</p>
+        <ul>
+          {% for uid in group.members %}
+          <li>{{ user.render_inline(udict[uid], badge=false) }}{% if uid == group.captain %} ⭐{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="medium-3 columns">
+    <div class="section side">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Actions') }}</h1>
+      </div>
+      <div class="section__body">
+        <a href="{{ url('group_contest_list', tid=tdoc.docId) }}" class="expanded button">{{ _('Back to list') }}</a>
+        {% if handler.user._id and not myGroup %}
+          <form method="post">
+            {{ csrf() }}
+            <input type="hidden" name="_operation" value="join">
+            <button type="submit" class="expanded primary button">{{ _('Join Group') }}</button>
+          </form>
+        {% endif %}
+        {% if myGroup and myGroup._id == group._id %}
+          {% if handler.user._id != group.captain %}
+          <form method="post">
+            {{ csrf() }}
+            <input type="hidden" name="_operation" value="leave">
+            <button type="submit" class="expanded alert button">{{ _('Leave Group') }}</button>
+          </form>
+          {% endif %}
+          {% if handler.user._id == group.captain or handler.user.hasPerm(PERM.PERM_EDIT_CONTEST) %}
+          <hr />
+          <h3>{{ _('Edit Group') }}</h3>
+          <form method="post">
+            {{ csrf() }}
+            <input type="hidden" name="_operation" value="edit">
+            <label>{{ _('Group Name') }}
+              <input type="text" name="name" value="{{ group.name }}" required>
+            </label>
+            <label>{{ _('Max Size') }}
+              <input type="number" name="maxSize" min="1" value="{{ group.maxSize or '' }}">
+            </label>
+            <button type="submit" class="expanded primary button">{{ _('Edit Group') }}</button>
+          </form>
+          <form method="post" onsubmit="return confirm('{{ _('Are you sure?') }}')">
+            {{ csrf() }}
+            <input type="hidden" name="_operation" value="delete">
+            <button type="submit" class="expanded alert button">{{ _('Delete Group') }}</button>
+          </form>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends "layout/basic.html" %}
+{% block content %}
+<div class="row">
+  <div class="medium-12 columns">
+    <div class="section">
+      <div class="section__header">
+        <h1 class="section__title">{{ _('Group Scoreboard') }} - {{ tdoc.title }}</h1>
+      </div>
+      <div class="section__body no-padding overflow-hidden-horizontal">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>{{ _('Group Name') }}</th>
+              <th>{{ _('Group Score') }}</th>
+              {% for pid in tdoc.pids %}
+              <th>{{ loop.index }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for gs in groups %}
+            {% set rank = loop.index %}
+            <tr>
+              <td>{{ rank }}</td>
+              <td><a href="{{ url('group_contest_detail', tid=tdoc.docId, gid=gs.group._id) }}">{{ gs.group.name }}</a></td>
+              <td><strong>{{ gs.score }}</strong></td>
+              {% for pid in tdoc.pids %}
+              {% set cell = gs.detail[pid] %}
+              <td>
+                {% if cell and cell.score is not none %}
+                  {% if cell.rid %}
+                    <a href="{{ url('record_detail', rid=cell.rid) }}">{{ cell.score }}</a>
+                  {% else %}
+                    {{ cell.score }}
+                  {% endif %}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="section__footer">
+      <a href="{{ url('group_contest_list', tid=tdoc.docId) }}" class="button">{{ _('Back to group list') }}</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
