@@ -1,0 +1,12 @@
+{
+    "name": "@hydrooj/sitemap",
+    "version": "0.1.0",
+    "main": "index.ts",
+    "repository": "https://github.com/hydro-dev/Hydro.git",
+    "author": "undefined <i@undefined.moe>",
+    "license": "AGPL-3.0-or-later",
+    "preferUnplugged": true,
+    "peerDependencies": {
+        "hydrooj": "*"
+    }
+}
