@@ -31,14 +31,19 @@ function formatUrlEntry(entry: UrlEntry): string {
     return parts.join('\n');
 }
 
+// Maximum URLs per sitemap file as per the Sitemap protocol specification.
+const SITEMAP_LIMIT = 50000;
+
 class SitemapHandler extends Handler {
     noCheckPermView = true;
 
     async get() {
         const domainId = this.domain._id;
-        const protocol = this.context.protocol;
+        const proto = (this.request.headers['x-forwarded-proto'] as string)
+            || (this.context as any).protocol
+            || 'http';
         const { host } = this.request;
-        const base = `${protocol}://${host}`;
+        const base = `${proto}://${host}`;
 
         const urls: UrlEntry[] = [
             { loc: `${base}/`, changefreq: 'daily', priority: '1.0' },
@@ -48,7 +53,9 @@ class SitemapHandler extends Handler {
         ];
 
         // Problems
-        const problems = await ProblemModel.getMulti(domainId, { hidden: false }, ['docId', 'pid']).toArray();
+        const problems = await ProblemModel.getMulti(domainId, { hidden: false }, ['docId', 'pid'])
+            .limit(SITEMAP_LIMIT)
+            .toArray();
         for (const p of problems) {
             urls.push({
                 loc: `${base}/p/${p.pid || p.docId}`,
@@ -60,10 +67,10 @@ class SitemapHandler extends Handler {
         // Contests
         const contests = await DocumentModel.getMulti(
             domainId, DocumentModel.TYPE_CONTEST, {}, ['docId'],
-        ).toArray();
+        ).limit(SITEMAP_LIMIT).toArray();
         for (const c of contests) {
             urls.push({
-                loc: `${base}/contest/${c.docId.toHexString()}`,
+                loc: `${base}/contest/${String(c.docId)}`,
                 changefreq: 'weekly',
                 priority: '0.6',
             });
@@ -72,10 +79,10 @@ class SitemapHandler extends Handler {
         // Discussions
         const discussions = await DiscussionModel.getMulti(
             domainId, { hidden: false }, ['docId'],
-        ).toArray();
+        ).limit(SITEMAP_LIMIT).toArray();
         for (const d of discussions) {
             urls.push({
-                loc: `${base}/discuss/${d.docId.toHexString()}`,
+                loc: `${base}/discuss/${String(d.docId)}`,
                 changefreq: 'weekly',
                 priority: '0.5',
             });
